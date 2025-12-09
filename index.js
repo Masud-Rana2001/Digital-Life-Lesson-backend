@@ -220,6 +220,7 @@ app.get("/my-lessons/:email", async (req, res) => {
 // get single lesson by ID
 app.get("/lessons/:id", async (req, res) => {
   const id = req.params.id;
+ 
   const result = await lessonsCollection.findOne({ _id: new ObjectId(id) });
   res.send(result);
 });
@@ -270,10 +271,7 @@ app.get("/favorite-lessons", verifyJWT, async (req, res) => {
     res.status(500).send({ message: "Something went wrong" });
   }
 });
-
-
-
-    
+  
 // mark lesson as featured
 app.patch("/lessons/featured/:id", async (req, res) => {
   const id = req.params.id;
@@ -298,11 +296,6 @@ app.patch("/lessons/unfeatured/:id", async (req, res) => {
     
     
     
-    
-
-    
- 
-
 
 //  Get User Plan
     
@@ -336,8 +329,9 @@ app.post("/webhook", express.raw({ type: 'application/json' }), async (req, res)
     //----------------------------------
     //       user related api          //
     //----------------------------------
-    
-    //get all user 
+    //------------------------
+    //         get all user 
+    //-------------------------
     app.get("/all-users",verifyJWT, async (req, res) => {
       const adminEmail = req.tokenEmail;
       const users = await usersCollection.find({
@@ -348,8 +342,9 @@ app.post("/webhook", express.raw({ type: 'application/json' }), async (req, res)
       res.send(users)
     }) 
 
-
-    //get single user 
+    //---------------------------
+    //          get single user
+    // --------------------------
     app.get("/single-user",verifyJWT, async (req, res) => {
       const email = req.tokenEmail;
       const user = await usersCollection.findOne({
@@ -406,7 +401,10 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
     res.status(500).send({ message: "Server error", error });
   }
 });
-
+    //----------------------------------
+    //       user related api          //
+    //----------------------------------
+    
     
     //----------------------------------
     //       user create          //
@@ -466,10 +464,7 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
         })
       }
     })
-    //----------------------------------
-    //       user related api          //
-    //----------------------------------
-    
+   
     //----------------------------------
     //      get user role          //
     //----------------------------------
@@ -507,13 +502,55 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
       const contributors = await usersCollection.find().sort({ "weeklyStats.score": -1 }).limit(10).project({
         name: 1,
         email: 1,
-        imageUrl: 1,
+        imageURL: 1,
         weeklyStats: 1
       }).toArray();
 
       res.send(contributors)
     })
 
+    //-----------------------------
+    //         MOST saved lessons
+    //-----------------------------
+    app.get("/all-lessons/most-saved", async (req, res) => {
+      try {
+        
+        const lessons = await lessonsCollection.find({})
+           .sort({ favoritedCount: -1 })
+          .limit(6)
+          .toArray();
+        res.send(lessons)
+      } catch (error) {
+         console.error(error);
+    res.status(500).send({ message: "Something went wrong." });
+      }
+    })
+
+    //---------------------------
+    //       Similar   Lessons
+    //----------------------------
+    app.get("/allLessons/similar/:lessonId", async (req, res) => {
+      const lessonId = req.params.lessonId;
+      const currentLesson = await lessonsCollection.findOne({
+        _id : new ObjectId(lessonId)
+      })
+      if (!currentLesson) {
+        return res.status(404).send({
+          message :" Lesson not found"
+        })
+      }
+      const { category, emotionalTone } = currentLesson;
+      const similarLessons = await lessonsCollection.find({
+        _id: { $ne: new ObjectId(lessonId) },
+        $or: [
+          { category: category },
+          { emotionalTone: emotionalTone }
+        ]
+      }).
+        limit(6)
+        .toArray();
+      res.send(similarLessons)
+    })
     //----------------------------------
     //       add like   💖      //
     //---------------------------------- 
