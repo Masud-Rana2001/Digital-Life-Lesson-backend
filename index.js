@@ -171,7 +171,9 @@ app.post('/payment-success', async (req, res) => {
 
 
 
- // CREATE LESSON
+     //----------------------------------
+    //       add lesson         //
+    //---------------------------------- 
 app.post("/lessons",verifyJWT, async (req, res) => {
   try {
     const email = req.tokenEmail
@@ -179,7 +181,11 @@ app.post("/lessons",verifyJWT, async (req, res) => {
     const result = await lessonsCollection.insertOne(lesson);
     const userUpdateDoc = {
         $addToSet: { myLesson: result.insertedId },
-        $inc: { totalLessons: 1 }
+         $inc: { totalLessons: 1 },
+         $inc: {
+              "weeklyStats.lessonsCreated": 1,
+              "weeklyStats.score": 5
+              }
       };
     const query ={email}
 
@@ -295,22 +301,7 @@ app.patch("/lessons/unfeatured/:id", async (req, res) => {
     
 
     
-    //        ######    Comments 
-    app.post("/create-comment",verifyJWT, async (req, res) => {
-      const { lessonId, commentCreatorEmail, comment,createdAt } = req.body;
-     const commentUpdateDoc = {
-       $addToSet: {
-         comments: {
-          email : commentCreatorEmail,
-          comment: comment,
-          createdAt
-        } },
-        $inc: { commentsCount: 1 }
-     };
-      const query ={_id :new ObjectId(lessonId)}
-      const result = await lessonsCollection.updateOne(query,  commentUpdateDoc);
-      res.send(result)
-    })
+ 
 
 
 //  Get User Plan
@@ -342,8 +333,9 @@ app.post("/webhook", express.raw({ type: 'application/json' }), async (req, res)
 });
 
 
-    
-    // #### user related api ####
+    //----------------------------------
+    //       user related api          //
+    //----------------------------------
     
     //get all user 
     app.get("/all-users",verifyJWT, async (req, res) => {
@@ -366,7 +358,9 @@ app.post("/webhook", express.raw({ type: 'application/json' }), async (req, res)
       res.send(user);
     }) 
     
-    //get user for post creator by email 
+     //----------------------------------
+    //       get user for post creator by email         
+    //----------------------------------  
     app.get("/user-by-email/:email", async (req, res) => {
       const email = req.params.email
       const user = await usersCollection.findOne({
@@ -375,7 +369,9 @@ app.post("/webhook", express.raw({ type: 'application/json' }), async (req, res)
       res.send(user);
     }) 
 
-   // Get lesson creator user by lesson ID
+    //----------------------------------
+    //       Get lesson creator user by lesson ID         
+    //---------------------------------- 
 app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
   try {
     const lessonId = req.params.lessonId;
@@ -412,7 +408,9 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
 });
 
     
-    //user create 
+    //----------------------------------
+    //       user create          //
+    //---------------------------------- 
     app.post("/user", async (req, res) => {
       const { name, email, imageURL } = req.body;
       console.log(req.body)
@@ -429,16 +427,32 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
         })
         return res.send(result)
       }
-        const userData = req.body;
-        userData.role = "user";
-        userData.createdAt = new Date();
-        userData.isPremium = false
-        userData.myLesson= []
-        userData.totalLessons= 0
-        userData.favorites= []
-        userData.favoritesCount= 0
-        userData.likes= []
-        userData.comments= []
+        const userData = {
+      ...req.body,
+      role: "user",
+      createdAt: new Date(),
+      lastLoggedIn: new Date(),
+      isPremium: false,
+
+      // LESSON STATS
+      myLesson: [],
+      totalLessons: 0,
+      favorites: [],
+      favoritesCount: 0,
+      likes: [],
+      comments: [],
+
+      
+      // WEEKLY CONTRIBUTOR STATS
+      weeklyStats: {
+        lessonsCreated: 0,
+        likesReceived: 0,
+        favoritesReceived: 0,
+        commentsGiven: 0,
+        score: 0,
+        lastUpdated: new Date(),  
+      }
+    };
         
        
         const result = await usersCollection.insertOne(userData);
@@ -452,8 +466,13 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
         })
       }
     })
-      
-   //get user role 
+    //----------------------------------
+    //       user related api          //
+    //----------------------------------
+    
+    //----------------------------------
+    //      get user role          //
+    //----------------------------------
     app.get("/role", verifyJWT, async (req, res) => {
       
       const result = await usersCollection.findOne({
@@ -465,7 +484,9 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
       })
 
     })
-   //get user isPremium 
+    //----------------------------------
+    //       get user isPremium         //
+    //---------------------------------- 
     app.get("/isPremium", verifyJWT, async (req, res) => {
       
       const user = await usersCollection.findOne({
@@ -479,59 +500,93 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
     })
     
 
+    //----------------------------------
+    //     get top CONTRIBUTOR         //
+    //---------------------------------- 
+    app.get("/top-contributors", async (req, res) => {
+      const contributors = await usersCollection.find().sort({ "weeklyStats.score": -1 }).limit(10).project({
+        name: 1,
+        email: 1,
+        imageUrl: 1,
+        weeklyStats: 1
+      }).toArray();
+
+      res.send(contributors)
+    })
+
+    //----------------------------------
+    //       add like   💖      //
+    //---------------------------------- 
+  app.patch("/lessons/like", verifyJWT, async (req, res) => {
+    try {
+      const { lessonId } = req.body;
+      const userEmail = req.tokenEmail;
+
+      if (!lessonId) {
+        return res.status(400).send({ message: "Lesson ID required." });
+      }
+
+      const query = { _id: new ObjectId(lessonId) };
+
+      const lesson = await lessonsCollection.findOne(query);
+      if (!lesson) {
+        return res.status(404).send({ message: "Lesson not found." });
+      }
+
+      const alreadyLiked = lesson.likes.includes(userEmail);
+
+      let updateDoc;
+
+      if (alreadyLiked) {
+      
+        updateDoc = {
+          $pull: { likes: userEmail },
+          $inc: { likesCount: -1 }
+        };
+      } else {
+      
+        updateDoc = {
+          $addToSet: { likes: userEmail },
+          $inc: { likesCount: 1 }
+        };
+      }
+      const result = await lessonsCollection.updateOne(query, updateDoc);
 
 
-    // ####  like 💖
-app.patch("/lessons/like", verifyJWT, async (req, res) => {
-  try {
-    const { lessonId } = req.body;
-    const userEmail = req.tokenEmail;
+      // Update LESSON CREATOR weekly stats
+      
+     const creatorEmail = lesson.creator.email;
 
-    if (!lessonId) {
-      return res.status(400).send({ message: "Lesson ID required." });
+    const creatorUpdate = alreadyLiked
+      ? { $inc: { "weeklyStats.likesReceived": -1, "weeklyStats.score": -2 } }
+      : { $inc: { "weeklyStats.likesReceived": 1, "weeklyStats.score": 2 } };
+
+    await usersCollection.updateOne({ email: creatorEmail }, creatorUpdate);
+
+  
+    // Update the USER who liked (likesGiven)
+
+    const userUpdate = alreadyLiked
+      ? { $inc: { "weeklyStats.likesGiven": -1, "weeklyStats.score": -1 } }
+      : { $inc: { "weeklyStats.likesGiven": 1, "weeklyStats.score": 1 } };
+
+    await usersCollection.updateOne({ email: userEmail }, userUpdate);
+
+      return res.send({
+        message: alreadyLiked ? "Like removed ❤️" : "Liked successfully ❤️",
+        liked: !alreadyLiked
+      });
+
+    } catch (error) {
+      console.error(error);
+      res.status(500).send({ message: "Something went wrong." });
     }
+  });
 
-    const query = { _id: new ObjectId(lessonId) };
-
-    const lesson = await lessonsCollection.findOne(query);
-    if (!lesson) {
-      return res.status(404).send({ message: "Lesson not found." });
-    }
-
-    const alreadyLiked = lesson.likes.includes(userEmail);
-
-    let updateDoc;
-
-    if (alreadyLiked) {
-     
-      updateDoc = {
-        $pull: { likes: userEmail },
-        $inc: { likesCount: -1 }
-      };
-    } else {
     
-      updateDoc = {
-        $addToSet: { likes: userEmail },
-        $inc: { likesCount: 1 }
-      };
-    }
-
-    const result = await lessonsCollection.updateOne(query, updateDoc);
-
-    return res.send({
-      message: alreadyLiked ? "Like removed ❤️" : "Liked successfully ❤️",
-      liked: !alreadyLiked
-    });
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: "Something went wrong." });
-  }
-});
-
-    
-
-    //   ##    save to fav
+    //-----------------------
+    //     save to fav 
+    // ----------------------
 app.patch("/lessons/save-to-favorites", verifyJWT, async (req, res) => {
   try {
     const { lessonId } = req.body;
@@ -542,66 +597,155 @@ app.patch("/lessons/save-to-favorites", verifyJWT, async (req, res) => {
     }
 
     const userQuery = { email: userEmail };
-    const lessonQuery = {_id : new ObjectId(lessonId)}
+    const lessonQuery = { _id: new ObjectId(lessonId) };
 
     const user = await usersCollection.findOne(userQuery);
     const lesson = await lessonsCollection.findOne(lessonQuery);
 
-    if (!user) {
-      return res.status(404).send({ message: "User not found." });
-    }
-    if (!lesson) {
-      return res.status(404).send({ message: "Lesson not found." });
-    }
+    if (!user) return res.status(404).send({ message: "User not found" });
+    if (!lesson) return res.status(404).send({ message: "Lesson not found" });
+
+    const creatorEmail = lesson.creator.email;
+    const creatorQuery = { email: creatorEmail };
 
     const alreadySaved = user.favorites?.includes(lessonId);
 
     let userUpdate = {};
+    let creatorUpdate = {};
     let lessonUpdate = {};
 
     if (alreadySaved) {
-      // Remove from User favorites
+      // Remove
       userUpdate = {
         $pull: { favorites: lessonId },
-        $inc: { favoritesCount: -1 }
+        $inc: {
+          favoritesCount: -1,
+          "weeklyStats.favoritesGiven": -1,
+          "weeklyStats.score": -1
+        }
       };
 
-      // Remove from lesson favoritedBy
+      creatorUpdate = {
+        $inc: {
+          "weeklyStats.favoritesReceived": -1,
+          "weeklyStats.score": -2
+        }
+      };
+
       lessonUpdate = {
         $pull: { favorites: userEmail },
         $inc: { favoritedCount: -1 }
       };
+
     } else {
-      // Add to User favorites
+      // Add
       userUpdate = {
         $addToSet: { favorites: lessonId },
-        $inc: { favoritesCount: 1 }
+        $inc: {
+          favoritesCount: 1,
+          "weeklyStats.favoritesGiven": 1,
+          "weeklyStats.score": 1
+        }
       };
 
-      // Add user email to lesson
+      creatorUpdate = {
+        $inc: {
+          "weeklyStats.favoritesReceived": 1,
+          "weeklyStats.score": 2
+        }
+      };
+
       lessonUpdate = {
         $addToSet: { favorites: userEmail },
         $inc: { favoritedCount: 1 }
       };
     }
 
-     // Update both collections
     await usersCollection.updateOne(userQuery, userUpdate);
+    await usersCollection.updateOne(creatorQuery, creatorUpdate);
     await lessonsCollection.updateOne(lessonQuery, lessonUpdate);
 
-    const lessonFav = lesson.favorites.includes(userEmail);
-
-   res.send({
+    res.send({
       saved: !alreadySaved,
-     message: alreadySaved ? "Removed from favorites" : "Saved to favorites",
-      inFav : lessonFav
+      message: alreadySaved
+        ? "Removed from favorites ⭐"
+        : "Saved to favorites ⭐"
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Something went wrong" });
+  }
+});
+      // ---------------------
+     //       Comments 
+    //-----------------------
+ app.post("/create-comment", verifyJWT, async (req, res) => {
+  try {
+    const userEmail = req.tokenEmail;
+    const { lessonId, comment, createdAt } = req.body;
+
+    if (!lessonId || !comment) {
+      return res.status(400).send({ message: "Lesson ID & comment required" });
+    }
+
+    const lessonQuery = { _id: new ObjectId(lessonId) };
+    const lesson = await lessonsCollection.findOne(lessonQuery);
+
+    if (!lesson) {
+      return res.status(404).send({ message: "Lesson not found" });
+    }
+
+    const commenterEmail = userEmail;
+    const lessonCreatorEmail = lesson.creator.email;
+
+    // Add comment to lesson
+    const commentUpdateDoc = {
+      $push: {
+        comments: {
+          email: commenterEmail,
+          comment,
+          createdAt
+        }
+      },
+      $inc: { commentsCount: 1 }
+    };
+
+    await lessonsCollection.updateOne(lessonQuery, commentUpdateDoc);
+
+    // Update stats of commenter (user)
+    const commenterQuery = { email: commenterEmail };
+    const commenterUpdate = {
+      $inc: {
+        "weeklyStats.commentsGiven": 1,
+        "weeklyStats.score": 1
+      }
+    };
+
+    // Update stats of creator (receives comment)
+    const creatorQuery = { email: lessonCreatorEmail };
+    const creatorUpdate = {
+      $inc: {
+        "weeklyStats.commentsReceived": 1,
+        "weeklyStats.score": 2
+      }
+    };
+
+    await usersCollection.updateOne(commenterQuery, commenterUpdate);
+    await usersCollection.updateOne(creatorQuery, creatorUpdate);
+
+    res.send({
+      message: "Comment added successfully",
+      status: true
     });
 
   } catch (error) {
     console.error(error);
-    res.status(500).send({ message: "Something went wrong." });
+    res.status(500).send({ message: "Something went wrong" });
   }
 });
+
+
 
     //  ##### Report create 
  
