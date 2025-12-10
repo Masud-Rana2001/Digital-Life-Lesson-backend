@@ -945,10 +945,89 @@ app.post("/lessons/report", verifyJWT, async (req, res) => {
 
 
 
+    //------------------------------
+    //         Dashboard summary
+    //-------------------------------
+
+
+app.get("/dashboard/summary", verifyJWT, async (req, res) => {
+    const userEmail = req.tokenEmail; 
+    
+    try {
+        const userData = await usersCollection.findOne(
+            { email: userEmail },
+            { 
+                projection: { 
+                    name: 1, 
+                    email: 1, 
+                    isPremium: 1, 
+                    imageURL: 1, 
+                    favoritesCount: 1, 
+                    myLesson: 1, 
+                    weeklyStats: 1 
+                }
+            }
+        );
+
+        if (!userData) {
+            return res.status(404).send({ message: "User data not found." });
+        }
+        const totalLessonsCreated = userData.myLesson ? userData.myLesson.length : 0; 
+        const totalSavedLessons = userData.favoritesCount || 0;
+        const lessonIds = userData.myLesson.map(id => new ObjectId(id));
+        
+    
+        const recentlyAddedLessons = await lessonsCollection.find({
+            _id: { $in: lessonIds } 
+        })
+        .sort({ createdAt: -1 }) 
+        .limit(4) 
+        .project({ title: 1,image:1, createdAt: 1, emotionalTone: 1 }) 
+        .toArray();
 
 
     
+        const summary = {
+            name: userData.name,
+            email: userData.email,
+            isPremium: userData.isPremium,
+            imageURL: userData.imageURL,
+            
+          
+            totalLessonsCreated,
+            totalSavedLessons,
+            
+           
+            weeklyStats: userData.weeklyStats || {},
+            recentlyAddedLessons,
+        };
+        
+        res.send(summary);
 
+    } catch (error) {
+        console.error("Error fetching dashboard summary:", error);
+        res.status(500).send({ message: "Internal server error while fetching dashboard data." });
+    }
+});
+    
+
+    
+
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
   
 
 
