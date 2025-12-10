@@ -252,7 +252,46 @@ app.delete("/lessons/:lessonId", verifyJWT, async (req, res) => {
   }
 });
 
-
+    //-----------------------------------
+    //         Update Lesson
+    //------------------------------------
+    app.patch('/update-lessons/:lessonId',verifyJWT, async (req, res) => {
+      try {
+        const requesterEmail = req.tokenEmail;
+        const id = req.params.lessonId;
+        const updateData = req.body;
+        const lessonQuery = {_id: new ObjectId(id)}
+        const updateDoc = {
+          $set: updateData
+        }
+        const lesson = await lessonsCollection.findOne(lessonQuery)
+        if (lesson.creator.email !== requesterEmail) {
+            return res.status(403).send({ message: "Forbidden: You are not authorized to update this lesson." });
+        }
+        const result = await lessonsCollection.updateOne(lessonQuery, updateDoc, { upsert: false });
+        if (result.modifiedCount > 0) {
+            res.send({ 
+                success: true, 
+                message: "Lesson updated successfully.", 
+                modifiedCount: result.modifiedCount 
+            });
+        } else if (result.matchedCount > 0 && result.modifiedCount === 0) {
+            
+             res.send({ 
+                success: true, 
+                message: "Lesson found, but no changes were applied.", 
+                modifiedCount: 0
+            });
+        }
+        else {
+             
+            res.status(404).send({ message: "Lesson not found or already deleted." });
+        }
+      } catch (error) {
+        console.error("Error updating lesson:", error);
+        res.status(500).send({ message: "Internal server error during update." });
+      }
+    })
 
  // GET MY LESSONS (BY CREATOR EMAIL)
 app.get("/my-lessons/:email", async (req, res) => {
@@ -285,6 +324,7 @@ app.get("/featured-lessons", async (req, res) => {
   const result = await lessonsCollection
     .find({ isFeatured: true })
     .sort({ createdAt: -1 })
+    .limit(6)
     .toArray();
  
   res.send(result);
@@ -555,7 +595,11 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
     //     get top CONTRIBUTOR         //
     //---------------------------------- 
     app.get("/top-contributors", async (req, res) => {
-      const contributors = await usersCollection.find().sort({ "weeklyStats.score": -1 }).limit(10).project({
+      const contributors = await usersCollection
+        .find()
+        .sort({ "weeklyStats.score": -1 })
+        .limit(6)
+        .project({
         name: 1,
         email: 1,
         imageURL: 1,
