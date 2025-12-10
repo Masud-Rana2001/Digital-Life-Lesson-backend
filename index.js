@@ -174,29 +174,85 @@ app.post('/payment-success', async (req, res) => {
      //----------------------------------
     //       add lesson         //
     //---------------------------------- 
-app.post("/lessons",verifyJWT, async (req, res) => {
+app.post("/lessons", verifyJWT, async (req, res) => {
   try {
-    const email = req.tokenEmail
+    const email = req.tokenEmail;
     const lesson = req.body;
+
     const result = await lessonsCollection.insertOne(lesson);
+
+    const query = { email };
+
     const userUpdateDoc = {
-        $addToSet: { myLesson: result.insertedId },
-         $inc: { totalLessons: 1 },
-         $inc: {
-              "weeklyStats.lessonsCreated": 1,
-              "weeklyStats.score": 5
-              }
-      };
-    const query ={email}
+      $addToSet: { myLesson: result.insertedId },
+
+      // merge all increments into ONE $inc
+      $inc: {
+        totalLessons: 1,
+        "weeklyStats.lessonsCreated": 1,
+        "weeklyStats.score": 5,
+      }
+    };
 
     const lessonRes = await usersCollection.updateOne(query, userUpdateDoc);
 
     res.send(result);
-
   } catch (error) {
     res.status(500).send({ error: error.message });
   }
 });
+    
+    //----------------------------------
+    //           Delete a lesson
+    //----------------------------------
+    
+app.delete("/lessons/:lessonId", verifyJWT, async (req, res) => {
+  try {
+    const lessonId = new ObjectId(req.params.lessonId);
+    // 1. Delete lesson
+    const deleteResult = await lessonsCollection.deleteOne({ _id: lessonId });
+    console.log(lessonId,deleteResult)
+    
+    if (deleteResult.deletedCount === 0) {
+      return res.status(404).send({ message: "Lesson not found" });
+    }
+
+   
+    const ownerUser = await usersCollection.findOne({
+      myLesson: lessonId     
+    });
+
+
+    if (!ownerUser) {
+      return res.send({
+        success: true,
+        message: "Lesson deleted successfully (No user stats changed)"
+      });
+    }
+
+   
+    const userUpdateDoc = {
+      $pull: { myLesson: lessonId },
+      $inc: {
+        totalLessons: -1,
+        "weeklyStats.lessonsCreated": -1,
+        "weeklyStats.score": -5
+      }
+    };
+
+    await usersCollection.updateOne({ email: ownerUser.email }, userUpdateDoc);
+
+    res.send({
+      success: true,
+      message: "Lesson deleted & creator stats updated"
+    });
+
+  } catch (err) {
+    res.status(500).send({ error: err.message });
+  }
+});
+
+
 
  // GET MY LESSONS (BY CREATOR EMAIL)
 app.get("/my-lessons/:email", async (req, res) => {
