@@ -329,15 +329,54 @@ app.get("/featured-lessons", async (req, res) => {
  
   res.send(result);
 });
-    
+    //------------------------
+    //       Public lessons
+    //----------------------------
 app.get("/public-lessons", async (req, res) => {
-  const result = await lessonsCollection
-    .find({ visibility: "Public" })
-    .sort({ createdAt: -1 })
-    .toArray();
-  
-  res.send(result);
+  try {
+    const { category, tone, search, page, limit } = req.query;
+
+    const currentPage = parseInt(page) || 1;
+    const perPage = parseInt(limit) || 6;
+    const skip = (currentPage - 1) * perPage;
+
+    // --- Query Object ---
+    const query = { visibility: "Public" };
+
+    if (category) query.category = category;
+    if (tone) query.emotionalTone = tone;
+
+    if (search) {
+      query.$or = [
+        { title: { $regex: search, $options: "i" } },
+        { description: { $regex: search, $options: "i" } }
+      ];
+    }
+
+    // Count total docs
+    const totalLessonsCount = await lessonsCollection.countDocuments(query);
+
+    // Fetch paginated lessons
+    const lessons = await lessonsCollection
+      .find(query)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(perPage)
+      .toArray();
+
+    res.send({
+      lessons,
+      totalLessonsCount,
+      currentPage,
+      totalPages: Math.ceil(totalLessonsCount / perPage)
+    });
+
+  } catch (err) {
+    console.error(err);
+    res.status(500).send({ message: "Server Error" });
+  }
 });
+
       
 app.get("/favorite-lessons", verifyJWT, async (req, res) => {
   try {
