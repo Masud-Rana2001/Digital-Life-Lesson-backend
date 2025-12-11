@@ -406,29 +406,68 @@ app.get("/favorite-lessons", verifyJWT, async (req, res) => {
     res.status(500).send({ message: "Something went wrong" });
   }
 });
-  
-// mark lesson as featured
-app.patch("/lessons/featured/:id", async (req, res) => {
-  const id = req.params.id;
-  const result = await lessonsCollection.updateOne(
-    { _id: new ObjectId(id) },
-    { $set: { featured: true } }
-  );
-  res.send(result);
-});
-
-// remove from featured
-app.patch("/lessons/unfeatured/:id", async (req, res) => {
-  const id = req.params.id;
-  const result = await lessonsCollection.updateOne(
-    { _id: new ObjectId(id) },
-    { $set: { featured: false } }
-  );
-  res.send(result);
-});
 
     
+    //==============================
+    // mark lesson as featured
+    //==============================
+
+
+app.patch("/admin/lessons/featured/:id", verifyJWT, verifyAdmin, async (req, res) => {
+    const lessonId = req.params.id;
+    const { isFeatured } = req.body; 
+
+    if (typeof isFeatured !== 'boolean') {
+        return res.status(400).send({ message: "Invalid status provided." });
+    }
     
+    try {
+      
+        const result = await lessonsCollection.updateOne(
+            { _id: new ObjectId(lessonId) },
+            { $set: { isFeatured: isFeatured } } 
+        );
+        if (result.matchedCount === 0) {
+            return res.status(404).send({ message: "Lesson not found." });
+        }
+
+        res.send(result);
+    } catch (error) {
+        console.error("Error updating featured status:", error);
+        res.status(500).send({ message: "Failed to update featured status." });
+    }
+});
+
+    //=======================
+    // Update Reviewed
+    //====================
+
+app.patch("/admin/lessons/reviewed/:id", verifyJWT, verifyAdmin, async (req, res) => {
+    const lessonId = req.params.id;
+    const { isReviewed } = req.body;
+
+    if (typeof isReviewed !== 'boolean') {
+        return res.status(400).send({ message: "Invalid status provided." });
+    }
+    
+    try {
+       
+        const result = await lessonsCollection.updateOne(
+            { _id: new ObjectId(lessonId) },
+            { $set: { isReviewed: isReviewed } }
+        );
+
+        if (result.matchedCount === 0) {
+            return res.status(404).send({ message: "Lesson not found." });
+        }
+        
+        res.send(result);
+
+    } catch (error) {
+        console.error("Error updating reviewed status:", error);
+        res.status(500).send({ message: "Failed to update reviewed status." });
+    }
+});
     
     
 
@@ -537,9 +576,33 @@ app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
   }
 });
     //----------------------------------
-    //       user related api          //
+    //       user profile update         //
     //----------------------------------
-    
+
+app.patch("/update-profile", verifyJWT, async (req, res) => {
+  try {
+    const email = req.tokenEmail;
+    const { name, image, coverPhoto, updatedAt } = req.body;
+
+    const updatedData = {
+      name,
+      image,
+      coverPhoto,
+      updatedAt,
+    };
+
+    const result = await usersCollection.updateOne(
+      { email },
+      { $set: updatedData }
+    );
+
+    res.send(result);
+  } catch (error) {
+    console.error(error);
+    res.status(500).send({ error: true, message: "Profile update failed!" });
+  }
+});
+
     
     //----------------------------------
     //       user create          //
@@ -1012,7 +1075,13 @@ app.get("/dashboard/summary", verifyJWT, async (req, res) => {
     
 
     
-
+    // ------------------------------
+    //      admin all-lessons
+    // -------------------------------
+    app.get("/admin/all-lessons", async (req, res) => {
+      const allLessons = await lessonsCollection.find().toArray();
+      res.send(allLessons)
+    })
     
 
 
