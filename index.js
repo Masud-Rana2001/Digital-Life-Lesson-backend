@@ -983,7 +983,7 @@ app.get("/dashboard/summary", verifyJWT, async (req, res) => {
         .sort({ createdAt: -1 }) 
         .limit(4) 
         .project({ title: 1,image:1, createdAt: 1, emotionalTone: 1 }) 
-        .toArray();
+        .toArray()
 
 
     
