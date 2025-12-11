@@ -128,24 +128,24 @@ app.post('/payment-success', async (req, res) => {
   try {
     const { sessionId } = req.body;
 
-    // 1️⃣ Stripe session retrieve
+    //  Stripe session retrieve
     const session = await stripe.checkout.sessions.retrieve(sessionId);
-    console.log(session);
+    
 
-    // 2️⃣ Email get from session
+    //  Email get from session
     const email = session.customer_email;
 
     if (!email) {
       return res.status(400).send({ error: "Customer email not found in session" });
     }
 
-    // 3️⃣ Update user isPremium to true
+    //  Update user isPremium to true
     const updatedUser = await usersCollection.updateOne(
       { email: email },
       { $set: { isPremium: true } }
     );
 
-    // 4️⃣ Send response
+    // Send response
     res.send({
       message: "Payment successful and user upgraded to Premium",
       session,
@@ -163,7 +163,7 @@ app.post('/payment-success', async (req, res) => {
   app.post('/payment-success',verifyJWT, async (req, res) => {
       const sessionId =  req.body.sessionId
       const session = await stripe.checkout.sessions.retrieve(sessionId);
-      console.log(session)
+      
     req.send(session)
     });
 
@@ -211,7 +211,7 @@ app.delete("/lessons/:lessonId", verifyJWT, async (req, res) => {
     const lessonId = new ObjectId(req.params.lessonId);
     // 1. Delete lesson
     const deleteResult = await lessonsCollection.deleteOne({ _id: lessonId });
-    console.log(lessonId,deleteResult)
+    
     
     if (deleteResult.deletedCount === 0) {
       return res.status(404).send({ message: "Lesson not found" });
@@ -609,7 +609,7 @@ app.patch("/update-profile", verifyJWT, async (req, res) => {
     //---------------------------------- 
     app.post("/user", async (req, res) => {
       const { name, email, imageURL } = req.body;
-      console.log(req.body)
+     
       try {
         const query = {
            email 
@@ -652,7 +652,7 @@ app.patch("/update-profile", verifyJWT, async (req, res) => {
         
        
         const result = await usersCollection.insertOne(userData);
-        console.log("result",result)
+        
         res.send(result)
 
       } catch (error) {
@@ -671,7 +671,7 @@ app.patch("/update-profile", verifyJWT, async (req, res) => {
       const result = await usersCollection.findOne({
         email:req.tokenEmail
       })
-      console.log(result)
+      
       res.send({
         role :result.role
       })
@@ -985,26 +985,51 @@ app.patch("/lessons/save-to-favorites", verifyJWT, async (req, res) => {
 });
 
 
-
-    //  ##### Report create 
+    //---------------------------------
+    //       Report create 
+    //---------------------------------
  
 app.post("/lessons/report", verifyJWT, async (req, res) => {
-  const { lessonId, reporterEmail, reason } = req.body;
+  const { lessonId, reporterEmail, reason, details } = req.body;
 
   if (!lessonId || !reporterEmail || !reason) {
     return res.status(400).send({ message: "Missing fields" });
   }
 
   const report = {
-    lessonId,
     reporterEmail,
     reason,
-    createdAt: new Date(),
+    details: details || "",
+    reportedAt: new Date(),
   };
 
-  const result = await reportsCollection.insertOne(report);
-  res.send(result);
+  // 1️⃣ Reports Collection এ Insert
+  const reportInsert = await reportsCollection.insertOne({
+    lessonId,
+    ...report
+  });
+
+  // 2️⃣ Lessons Collection এ Embedded Report Push + reportCount Increase
+  const updateLesson = await lessonsCollection.updateOne(
+    { _id: new ObjectId(lessonId) },
+    {
+      $inc: { reportCount: 1 },
+      $push: {
+        reports: {
+          _id: reportInsert.insertedId,
+          ...report
+        }
+      }
+    }
+  );
+
+  res.send({
+    success: true,
+    reportId: reportInsert.insertedId,
+    lessonUpdate: updateLesson
+  });
 });
+
 
 
 
@@ -1078,24 +1103,235 @@ app.get("/dashboard/summary", verifyJWT, async (req, res) => {
     // ------------------------------
     //      admin all-lessons
     // -------------------------------
-    app.get("/admin/all-lessons", async (req, res) => {
-      const allLessons = await lessonsCollection.find().toArray();
-      res.send(allLessons)
-    })
+ 
+
+app.get("/admin/all-lessons", verifyJWT, verifyAdmin, async (req, res) => {
+    const { category, visibility, status } = req.query;
+
+    let query = {};
+
+    if (category && category !== '') {
+        query.category = category;
+    }
+
+    if (visibility && visibility !== '') {
+        query.visibility = visibility;
+    }
+
+    if (status && status !== '') {
+        if (status === 'flagged') {
+            query.isFlagged = true;
+        } else if (status === 'reviewed') {
+            query.isReviewed = true;
+        } else if (status === 'unreviewed') {
+            query.isReviewed = { $ne: true };
+        } else if (status === 'featured') {
+            query.isFeatured = true;
+        }
+    }
+
+    try {
+        const lessons = await lessonsCollection.find(query)
+            .sort({ createdAt: -1 })
+            .toArray();
+
+        res.send(lessons);
+    } catch (error) {
+        console.error("Error fetching lessons for admin:", error);
+        res.status(500).send({ message: "Failed to load filtered lessons. Internal server error." });
+    }
+});
+
+    //---------------------------------
+    //       lesson-stats
+    //---------------------------------
+app.get("/admin/lesson-stats", verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const stats = await lessonsCollection.aggregate([
+            {
+                $group: {
+                    _id: null,
+                    publicCount: { $sum: { $cond: [{ $eq: ["$visibility", "Public"] }, 1, 0] } },
+                    privateCount: { $sum: { $cond: [{ $eq: ["$visibility", "Private"] }, 1, 0] } },
+                    
+                    reportCount: { $sum: { $cond: [{ $gt: ["$reportCount", 0] }, 1, 0] } },
+                }
+            },
+            {
+                $project: {
+                    _id: 0,
+                    publicCount: 1,
+                    privateCount: 1,
+                    reportCount: 1,
+                }
+            }
+        ]).toArray();
+
+        res.send(stats[0] || { publicCount: 0, privateCount: 0, reportCount: 0 });
+
+    } catch (error) {
+        console.error("Error fetching admin stats:", error);
+        res.status(500).send({ message: "Failed to fetch admin stats." });
+    }
+});
+
+
+
+
+    // -------------------------
+    //    reported lessons
+    //--------------------------
+
+
+app.get("/admin/reported-lessons", verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+        const pipeline = [
+            {
+                $group: {
+                    _id: "$lessonId", 
+                    reportCount: { $sum: 1 }, 
+                    latestReportDate: { $max: "$reportedAt" } //
+                }
+            },
+            {
+                $sort: { latestReportDate: -1 } 
+            },
+            {
+                $addFields: {
+                    lessonObjectId: { $toObjectId: "$_id" }
+                }
+            },
+            {
+                $lookup: { 
+                    from: "lessons", 
+                    localField: "lessonObjectId",
+                    foreignField: "_id",
+                    as: "lessonDetails"
+                }
+            },
+            {
+                $unwind: "$lessonDetails" 
+            },
+            {
+                $project: {
+                    _id: "$lessonObjectId",
+                    title: "$lessonDetails.title",
+                    image: "$lessonDetails.image",
+                    reportCount: 1,
+                    latestReportDate: 1 
+                }
+            }
+        ];
+
+        const reportedLessons = await reportsCollection.aggregate(pipeline).toArray(); 
+        res.send(reportedLessons);
+
+    } catch (error) {
+        console.error("Error fetching reported lessons:", error);
+        res.status(500).send({ message: "Failed to load reported lessons." });
+    }
+});
+
+    
+    
+    //-----------------------------------
+    // reported lessons Details
+    //------------------------------------
+
     
 
 
+app.get("/admin/reports/lesson/:lessonId", verifyJWT, verifyAdmin, async (req, res) => {
+    const lessonId = req.params.lessonId;
+    
+    try {
+        const reports = await reportsCollection.find({ 
+            lessonId: lessonId 
+        }).sort({ reportedAt: 1 }).toArray();
+
+        res.send(reports);
+    } catch (error) {
+        console.error("Error fetching report details:", error);
+        res.status(500).send({ message: "Failed to fetch report details." });
+    }
+});
+    // ---------------------------
+    //      Delete the lesson
+    //--------------------------------
+    
 
 
+app.delete("/admin/lessons/:lessonId", verifyJWT, verifyAdmin, async (req, res) => {
+    const lessonId = req.params.lessonId;
+    const objectLessonId = new ObjectId(lessonId); 
+
+    try {
+        const lessonDeleteResult = await lessonsCollection.deleteOne({ _id: objectLessonId });
 
 
+        const reportsDeleteResult = await reportsCollection.deleteMany({ lessonId: lessonId }); 
+
+        if (lessonDeleteResult.deletedCount === 0) {
+           
+            return res.send({ message: "Lesson not found." });
+        }
+        
+        res.send({ 
+            message: "Lesson and associated reports deleted successfully.",
+            lessonDeleted: lessonDeleteResult.deletedCount,
+            reportsDeleted: reportsDeleteResult.deletedCount 
+        });
+
+    } catch (error) {
+        console.error("Error deleting lesson and reports:", error);
+        res.status(500).send({ message: "Failed to delete lesson and reports." });
+    }
+});
+
+    
+    //-------------------------------
+    //          ignore 
+    //----------------------------------
+   
+app.delete("/admin/reports/lesson/:lessonId", verifyJWT, verifyAdmin, async (req, res) => {
+   
+    const lessonId = req.params.lessonId;
+    
+  
+    if (!lessonId) {
+        return res.status(400).send({ message: "Lesson ID is required." });
+    }
+    
+    try {
+        
+        const reportsDeleteResult = await reportsCollection.deleteMany({ lessonId: lessonId }); 
+
+       
+        await lessonsCollection.updateOne(
+            { _id: new ObjectId(lessonId) },  
+            { $set: { reportCount: 0 } }
+        );
 
 
+        if (reportsDeleteResult.deletedCount === 0) {
+            
+            return res.status(200).send({ 
+                message: "No active reports were found for this lesson, or reports already cleared.",
+                reportsDeleted: 0
+            });
+        }
+        
+       
+        res.send({ 
+            message: "All associated reports successfully ignored. Lesson cleared from flagged list.",
+            reportsDeleted: reportsDeleteResult.deletedCount
+        });
 
-
-
-
-
+    } catch (error) {
+        console.error(`Error ignoring reports for Lesson ${lessonId}:`, error);
+        res.status(500).send({ message: "Failed to ignore reports due to a server error." });
+    }
+});
     
   
 
