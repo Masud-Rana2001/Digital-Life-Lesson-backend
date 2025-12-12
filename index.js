@@ -26,8 +26,9 @@ app.use(
   })
 )
 app.use(express.json())
-
-// jwt middlewares
+//===================================
+//           jwt middlewares
+//====================================
 const verifyJWT = async (req, res, next) => {
   const token = req?.headers?.authorization?.split(' ')[1];
   
@@ -44,15 +45,15 @@ const verifyJWT = async (req, res, next) => {
   }
 }
 
-// Create a MongoClient with a MongoClientOptions object to set the Stable API version
-const client = new MongoClient(process.env.MONGODB_URI, {
-  serverApi: {
-    version: ServerApiVersion.v1,
-    strict: true,
-    deprecationErrors: true,
-  },
-})
-async function run() {
+    // Create a MongoClient with a MongoClientOptions object to set the Stable API version
+    const client = new MongoClient(process.env.MONGODB_URI, {
+      serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+      },
+    })
+    async function run() {
   try {
 
 
@@ -61,8 +62,9 @@ async function run() {
     const usersCollection = db.collection("users");
     const reportsCollection = db.collection("reports");
     
-
-    //     ######  verifyAdmin    ####
+    //========================================
+    //       verifyAdmin    
+    //========================================
     const verifyAdmin =  async (req,res,next) => {
       const email = req.tokenEmail;
       const user = await usersCollection.findOne({ email });
@@ -73,17 +75,7 @@ async function run() {
       }
       next()
     };
-    //     ######  verifySeller    ####
-    const verifySeller =  async (req,res,next) => {
-      const email = req.tokenEmail;
-      const user = await usersCollection.findOne({ email });
-      if (user?.role !== "seller") {
-        return res.status(403).send({
-          message : "Unauthorized access"
-        })
-      }
-      next()
-    };
+    
 
 
     
@@ -122,8 +114,9 @@ app.post('/create-checkout-session', async (req, res) => {
     res.status(500).send({ error: "Failed to create checkout session" });
   }
 });
-
-// Retrieve Checkout Session after success
+    //========================================
+    // Retrieve Checkout Session after success
+    //========================================
 app.post('/payment-success', async (req, res) => {
   try {
     const { sessionId } = req.body;
@@ -158,8 +151,9 @@ app.post('/payment-success', async (req, res) => {
   }
 });
 
-
-    // retrieve data stripe
+    //====================================
+    //       retrieve data stripe
+    //====================================
   app.post('/payment-success',verifyJWT, async (req, res) => {
       const sessionId =  req.body.sessionId
       const session = await stripe.checkout.sessions.retrieve(sessionId);
@@ -206,51 +200,51 @@ app.post("/lessons", verifyJWT, async (req, res) => {
     //           Delete a lesson
     //----------------------------------
     
-app.delete("/lessons/:lessonId", verifyJWT, async (req, res) => {
-  try {
-    const lessonId = new ObjectId(req.params.lessonId);
-    // 1. Delete lesson
-    const deleteResult = await lessonsCollection.deleteOne({ _id: lessonId });
-    
-    
-    if (deleteResult.deletedCount === 0) {
-      return res.status(404).send({ message: "Lesson not found" });
-    }
+    app.delete("/lessons/:lessonId", verifyJWT, async (req, res) => {
+      try {
+        const lessonId = new ObjectId(req.params.lessonId);
+        // 1. Delete lesson
+        const deleteResult = await lessonsCollection.deleteOne({ _id: lessonId });
+        
+        
+        if (deleteResult.deletedCount === 0) {
+          return res.status(404).send({ message: "Lesson not found" });
+        }
 
-   
-    const ownerUser = await usersCollection.findOne({
-      myLesson: lessonId     
-    });
+      
+        const ownerUser = await usersCollection.findOne({
+          myLesson: lessonId     
+        });
 
 
-    if (!ownerUser) {
-      return res.send({
-        success: true,
-        message: "Lesson deleted successfully (No user stats changed)"
-      });
-    }
+        if (!ownerUser) {
+          return res.send({
+            success: true,
+            message: "Lesson deleted successfully (No user stats changed)"
+          });
+        }
 
-   
-    const userUpdateDoc = {
-      $pull: { myLesson: lessonId },
-      $inc: {
-        totalLessons: -1,
-        "weeklyStats.lessonsCreated": -1,
-        "weeklyStats.score": -5
+      
+        const userUpdateDoc = {
+          $pull: { myLesson: lessonId },
+          $inc: {
+            totalLessons: -1,
+            "weeklyStats.lessonsCreated": -1,
+            "weeklyStats.score": -5
+          }
+        };
+
+        await usersCollection.updateOne({ email: ownerUser.email }, userUpdateDoc);
+
+        res.send({
+          success: true,
+          message: "Lesson deleted & creator stats updated"
+        });
+
+      } catch (err) {
+        res.status(500).send({ error: err.message });
       }
-    };
-
-    await usersCollection.updateOne({ email: ownerUser.email }, userUpdateDoc);
-
-    res.send({
-      success: true,
-      message: "Lesson deleted & creator stats updated"
     });
-
-  } catch (err) {
-    res.status(500).send({ error: err.message });
-  }
-});
 
     //-----------------------------------
     //         Update Lesson
@@ -292,120 +286,136 @@ app.delete("/lessons/:lessonId", verifyJWT, async (req, res) => {
         res.status(500).send({ message: "Internal server error during update." });
       }
     })
+  
 
- // GET MY LESSONS (BY CREATOR EMAIL)
-app.get("/my-lessons/:email", async (req, res) => {
-  try {
-    const email = req.params.email;
+    //========================================
+    //     GET MY LESSONS (BY CREATOR EMAIL)
+    //========================================
+    app.get("/my-lessons/:email", async (req, res) => {
+      try {
+        const email = req.params.email;
 
-    const query = { "creator.email": email };
+        const query = { "creator.email": email };
 
-    const result = await lessonsCollection
-      .find(query)
-      .sort({ createdAt: -1 }) // newest first
-      .toArray();
+        const result = await lessonsCollection
+          .find(query)
+          .sort({ createdAt: -1 }) // newest first
+          .toArray();
 
-    res.send(result);
+        res.send(result);
 
-  } catch (error) {
-    res.status(500).send({ error: error.message });
-  }
-});
+      } catch (error) {
+        res.status(500).send({ error: error.message });
+      }
+    });
     
-// get single lesson by ID
-app.get("/lessons/:id", async (req, res) => {
-  const id = req.params.id;
- 
-  const result = await lessonsCollection.findOne({ _id: new ObjectId(id) });
-  res.send(result);
-});
 
-app.get("/featured-lessons", async (req, res) => {
-  const result = await lessonsCollection
-    .find({ isFeatured: true })
-    .sort({ createdAt: -1 })
-    .limit(6)
-    .toArray();
- 
-  res.send(result);
-});
+
+    //======================================
+    //     get single lesson by ID
+    //======================================
+    app.get("/lessons/:id", async (req, res) => {
+      const id = req.params.id;
+    
+      const result = await lessonsCollection.findOne({ _id: new ObjectId(id) });
+      res.send(result);
+    });
+
+
+
+    //===================================
+    //      Get featured lessons 
+    //===================================
+      app.get("/featured-lessons", async (req, res) => {
+        const result = await lessonsCollection
+          .find({ isFeatured: true,visibility: "Public" })
+          .sort({ createdAt: -1 })
+          .limit(6)
+          .toArray();
+      
+        res.send(result);
+      });
+    
+    
     //------------------------
     //       Public lessons
     //----------------------------
-app.get("/public-lessons", async (req, res) => {
-  try {
-    const { category, tone, search, page, limit } = req.query;
+    app.get("/public-lessons", async (req, res) => {
+      try {
+        const { category, tone, search, page, limit } = req.query;
 
-    const currentPage = parseInt(page) || 1;
-    const perPage = parseInt(limit) || 6;
-    const skip = (currentPage - 1) * perPage;
+        const currentPage = parseInt(page) || 1;
+        const perPage = parseInt(limit) || 6;
+        const skip = (currentPage - 1) * perPage;
 
-    // --- Query Object ---
-    const query = { visibility: "Public" };
+        // --- Query Object ---
+        const query = { visibility: "Public" };
 
-    if (category) query.category = category;
-    if (tone) query.emotionalTone = tone;
+        if (category) query.category = category;
+        if (tone) query.emotionalTone = tone;
 
-    if (search) {
-      query.$or = [
-        { title: { $regex: search, $options: "i" } },
-        { description: { $regex: search, $options: "i" } }
-      ];
-    }
+        if (search) {
+          query.$or = [
+            { title: { $regex: search, $options: "i" } },
+            { description: { $regex: search, $options: "i" } }
+          ];
+        }
 
-    // Count total docs
-    const totalLessonsCount = await lessonsCollection.countDocuments(query);
+        // Count total docs
+        const totalLessonsCount = await lessonsCollection.countDocuments(query);
 
-    // Fetch paginated lessons
-    const lessons = await lessonsCollection
-      .find(query)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(perPage)
-      .toArray();
+        // Fetch paginated lessons
+        const lessons = await lessonsCollection
+          .find(query)
+          .sort({ createdAt: -1 })
+          .skip(skip)
+          .limit(perPage)
+          .toArray();
 
-    res.send({
-      lessons,
-      totalLessonsCount,
-      currentPage,
-      totalPages: Math.ceil(totalLessonsCount / perPage)
+        res.send({
+          lessons,
+          totalLessonsCount,
+          currentPage,
+          totalPages: Math.ceil(totalLessonsCount / perPage)
+        });
+
+      } catch (err) {
+        console.error(err);
+        res.status(500).send({ message: "Server Error" });
+      }
     });
 
-  } catch (err) {
-    console.error(err);
-    res.status(500).send({ message: "Server Error" });
-  }
-});
+    //===============================
+    //    Favprite lessons 
+    //================================
+    app.get("/favorite-lessons", verifyJWT, async (req, res) => {
+      try {
+        const email = req.tokenEmail;
+        const user = await usersCollection.findOne({ email });
 
-      
-app.get("/favorite-lessons", verifyJWT, async (req, res) => {
-  try {
-    const email = req.tokenEmail;
-    const user = await usersCollection.findOne({ email });
+        if (!user) {
+          return res.status(404).send({ message: "User not found" });
+        }
 
-    if (!user) {
-      return res.status(404).send({ message: "User not found" });
-    }
+        const favLessonIds = user.favorites || [];
+        if (favLessonIds.length === 0) {
+          return res.send([]);
+        }
+        const objectIds = favLessonIds.map(id => new ObjectId(id));
 
-    const favLessonIds = user.favorites || [];
-    if (favLessonIds.length === 0) {
-      return res.send([]);
-    }
-    const objectIds = favLessonIds.map(id => new ObjectId(id));
+        
+        const favoriteLessons = await lessonsCollection
+          .find({ _id: { $in: objectIds } })
+          .sort({ createdAt: -1 })
+          .toArray();
 
-    
-    const favoriteLessons = await lessonsCollection
-      .find({ _id: { $in: objectIds } })
-      .sort({ createdAt: -1 })
-      .toArray();
+        res.send(favoriteLessons);
 
-    res.send(favoriteLessons);
-
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ message: "Something went wrong" });
-  }
-});
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ message: "Something went wrong" });
+      }
+    });
 
     
     //==============================
@@ -413,91 +423,93 @@ app.get("/favorite-lessons", verifyJWT, async (req, res) => {
     //==============================
 
 
-app.patch("/admin/lessons/featured/:id", verifyJWT, verifyAdmin, async (req, res) => {
-    const lessonId = req.params.id;
-    const { isFeatured } = req.body; 
+    app.patch("/admin/lessons/featured/:id", verifyJWT, verifyAdmin, async (req, res) => {
+        const lessonId = req.params.id;
+        const { isFeatured } = req.body; 
 
-    if (typeof isFeatured !== 'boolean') {
-        return res.status(400).send({ message: "Invalid status provided." });
-    }
-    
-    try {
-      
-        const result = await lessonsCollection.updateOne(
-            { _id: new ObjectId(lessonId) },
-            { $set: { isFeatured: isFeatured } } 
-        );
-        if (result.matchedCount === 0) {
-            return res.status(404).send({ message: "Lesson not found." });
+        if (typeof isFeatured !== 'boolean') {
+            return res.status(400).send({ message: "Invalid status provided." });
         }
+        
+        try {
+          
+            const result = await lessonsCollection.updateOne(
+                { _id: new ObjectId(lessonId) },
+                { $set: { isFeatured: isFeatured } } 
+            );
+            if (result.matchedCount === 0) {
+                return res.status(404).send({ message: "Lesson not found." });
+            }
 
-        res.send(result);
-    } catch (error) {
-        console.error("Error updating featured status:", error);
-        res.status(500).send({ message: "Failed to update featured status." });
-    }
-});
+            res.send(result);
+        } catch (error) {
+            console.error("Error updating featured status:", error);
+            res.status(500).send({ message: "Failed to update featured status." });
+        }
+    });
 
     //=======================
     // Update Reviewed
     //====================
 
-app.patch("/admin/lessons/reviewed/:id", verifyJWT, verifyAdmin, async (req, res) => {
-    const lessonId = req.params.id;
-    const { isReviewed } = req.body;
+      app.patch("/admin/lessons/reviewed/:id", verifyJWT, verifyAdmin, async (req, res) => {
+          const lessonId = req.params.id;
+          const { isReviewed } = req.body;
 
-    if (typeof isReviewed !== 'boolean') {
-        return res.status(400).send({ message: "Invalid status provided." });
-    }
+          if (typeof isReviewed !== 'boolean') {
+              return res.status(400).send({ message: "Invalid status provided." });
+          }
+          
+          try {
+            
+              const result = await lessonsCollection.updateOne(
+                  { _id: new ObjectId(lessonId) },
+                  { $set: { isReviewed: isReviewed } }
+              );
+
+              if (result.matchedCount === 0) {
+                  return res.status(404).send({ message: "Lesson not found." });
+              }
+              
+              res.send(result);
+
+          } catch (error) {
+              console.error("Error updating reviewed status:", error);
+              res.status(500).send({ message: "Failed to update reviewed status." });
+          }
+      });
     
-    try {
-       
-        const result = await lessonsCollection.updateOne(
-            { _id: new ObjectId(lessonId) },
-            { $set: { isReviewed: isReviewed } }
+    
+      //==============================
+      //  Get User Plan
+     //================================
+    
+      app.get("/users/plan/:email", async (req, res) => {
+        const result = await usersCollection.findOne(
+          { email: req.params.email },
+          { projection: { isPremium: 1 } }
         );
-
-        if (result.matchedCount === 0) {
-            return res.status(404).send({ message: "Lesson not found." });
-        }
-        
         res.send(result);
+      });
 
-    } catch (error) {
-        console.error("Error updating reviewed status:", error);
-        res.status(500).send({ message: "Failed to update reviewed status." });
-    }
-});
-    
-    
+    //=============================================
+    //  Webhook (Stripe → Update User Premium)
+    //=========================================
 
-//  Get User Plan
-    
-app.get("/users/plan/:email", async (req, res) => {
-  const result = await usersCollection.findOne(
-    { email: req.params.email },
-    { projection: { isPremium: 1 } }
-  );
-  res.send(result);
-});
+    app.post("/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
+      let event = req.body;
 
+      if (event.type === "checkout.session.completed") {
+        const email = event.data.object.customer_email;
 
-// ✔ Webhook (Stripe → Update User Premium)
+        await usersCollection.updateOne(
+          { email },
+          { $set: { isPremium: true } }
+        );
+      }
 
-app.post("/webhook", express.raw({ type: 'application/json' }), async (req, res) => {
-  let event = req.body;
-
-  if (event.type === "checkout.session.completed") {
-    const email = event.data.object.customer_email;
-
-    await usersCollection.updateOne(
-      { email },
-      { $set: { isPremium: true } }
-    );
-  }
-
-  res.sendStatus(200);
-});
+      res.sendStatus(200);
+    });
 
 
     //----------------------------------
@@ -541,67 +553,67 @@ app.post("/webhook", express.raw({ type: 'application/json' }), async (req, res)
     //----------------------------------
     //       Get lesson creator user by lesson ID         
     //---------------------------------- 
-app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
-  try {
-    const lessonId = req.params.lessonId;
+    app.get("/lesson-creator/:lessonId", verifyJWT, async (req, res) => {
+      try {
+        const lessonId = req.params.lessonId;
 
-    const lesson = await lessonsCollection.findOne({
-      _id: new ObjectId(lessonId)
+        const lesson = await lessonsCollection.findOne({
+          _id: new ObjectId(lessonId)
+        });
+
+        // Lesson not found
+        if (!lesson) {
+          return res.status(404).send({ message: "Lesson not found" });
+        }
+
+        const creatorEmail = lesson?.creator?.email;
+
+        // creator.email missing (avoid crash)
+        if (!creatorEmail) {
+          return res.status(400).send({ message: "Creator email missing" });
+        }
+
+        const user = await usersCollection.findOne({ email: creatorEmail });
+
+        // User not found
+        if (!user) {
+          return res.status(404).send({ message: "Creator not found" });
+        }
+
+        res.send(user);
+
+      } catch (error) {
+        console.error("Error fetching lesson creator:", error);
+        res.status(500).send({ message: "Server error", error });
+      }
     });
-
-    // Lesson not found
-    if (!lesson) {
-      return res.status(404).send({ message: "Lesson not found" });
-    }
-
-    const creatorEmail = lesson?.creator?.email;
-
-    // creator.email missing (avoid crash)
-    if (!creatorEmail) {
-      return res.status(400).send({ message: "Creator email missing" });
-    }
-
-    const user = await usersCollection.findOne({ email: creatorEmail });
-
-    // User not found
-    if (!user) {
-      return res.status(404).send({ message: "Creator not found" });
-    }
-
-    res.send(user);
-
-  } catch (error) {
-    console.error("Error fetching lesson creator:", error);
-    res.status(500).send({ message: "Server error", error });
-  }
-});
     //----------------------------------
     //       user profile update         //
     //----------------------------------
 
-app.patch("/update-profile", verifyJWT, async (req, res) => {
-  try {
-    const email = req.tokenEmail;
-    const { name, image, coverPhoto, updatedAt } = req.body;
+    app.patch("/update-profile", verifyJWT, async (req, res) => {
+      try {
+        const email = req.tokenEmail;
+        const { name, image, coverPhoto, updatedAt } = req.body;
 
-    const updatedData = {
-      name,
-      image,
-      coverPhoto,
-      updatedAt,
-    };
+        const updatedData = {
+          name,
+          image,
+          coverPhoto,
+          updatedAt,
+        };
 
-    const result = await usersCollection.updateOne(
-      { email },
-      { $set: updatedData }
-    );
+        const result = await usersCollection.updateOne(
+          { email },
+          { $set: updatedData }
+        );
 
-    res.send(result);
-  } catch (error) {
-    console.error(error);
-    res.status(500).send({ error: true, message: "Profile update failed!" });
-  }
-});
+        res.send(result);
+      } catch (error) {
+        console.error(error);
+        res.status(500).send({ error: true, message: "Profile update failed!" });
+      }
+    });
 
     
     //----------------------------------
@@ -677,6 +689,29 @@ app.patch("/update-profile", verifyJWT, async (req, res) => {
       })
 
     })
+
+
+    //===================================
+    //        Update user Role
+    //===================================
+ 
+app.patch('/update-user-role/:email', verifyJWT, verifyAdmin, async (req, res) => {
+  const email = req.params.email;
+  const role = req.query.role;
+
+  if (!role) {
+    return res.status(400).send({ message: "Role is required" });
+  }
+
+  const result = await usersCollection.updateOne(
+    { email },
+    { $set: { role } }
+  );
+
+  res.send(result);
+});
+
+
     //----------------------------------
     //       get user isPremium         //
     //---------------------------------- 
@@ -692,7 +727,84 @@ app.patch("/update-profile", verifyJWT, async (req, res) => {
 
     })
     
+    //=======================================================================
+    //      Delete User with created lessons , likes,comments , reports    //
+    //=======================================================================
+    app.delete("/delete-user/:userId", verifyJWT, verifyAdmin, async (req, res) => {
+        const userId = req.params.userId;
+        
+        if (!userId) {
+            return res.status(400).send({ message: "User ID is required." });
+        }
 
+        let userEmail = null;
+        let deletedLessons = 0;
+        let deletedReports = 0;
+        let modifiedLessonsCount = 0; // লাইক/কমেন্ট আপডেটের জন্য
+
+        try {
+            const objectUserId = new ObjectId(userId);
+            const userQuery = { _id: objectUserId };
+
+            // 1. ইউজারের ইমেল ফেচ করা
+            const user = await usersCollection.findOne(userQuery, { projection: { email: 1 } }); 
+            
+            if (!user) {
+                return res.status(404).send({ message: "User not found." });
+            }
+            userEmail = user.email;
+
+        
+            const lessonsResult = await lessonsCollection.deleteMany({
+                "creator.email": userEmail
+            });
+            deletedLessons = lessonsResult.deletedCount;
+
+          
+            const reportsResult = await reportsCollection.deleteMany({
+                reporterEmail: userEmail
+            });
+            deletedReports = reportsResult.deletedCount;
+
+            const updateLikesResult = await lessonsCollection.updateMany(
+                { "likes": userEmail },
+                { 
+                    $pull: { "likes": userEmail },
+                    $inc: { "likesCount": -1 }     
+                }
+            );
+
+            const updateCommentsResult = await lessonsCollection.updateMany(
+                { "comments.commenterEmail": userEmail },
+                { 
+                    $pull: { 
+                        "comments": { commenterEmail: userEmail } 
+                    } 
+                }
+            );
+
+            modifiedLessonsCount = updateLikesResult.modifiedCount + updateCommentsResult.modifiedCount;
+      
+            const deleteUserResult = await usersCollection.deleteOne(userQuery);
+
+            if (deleteUserResult
+        .deletedCount === 0) {
+                return res.status(500).send({ message: "Failed to delete user." });
+            }
+
+            res.send({
+                message: "User and all associated data successfully cleaned and deleted.",
+                userDeleted: deleteUserResult.deletedCount,
+                lessonsDeleted: deletedLessons,
+                reportsDeleted: deletedReports,
+                lessonsModified: modifiedLessonsCount 
+            });
+
+        } catch (error) {
+            console.error(`Error deleting user ${userId}:`, error);
+            res.status(500).send({ message: "Failed to delete user and associated data." });
+        }
+    });
     //----------------------------------
     //     get top CONTRIBUTOR         //
     //---------------------------------- 
@@ -1333,8 +1445,405 @@ app.delete("/admin/reports/lesson/:lessonId", verifyJWT, verifyAdmin, async (req
     }
 });
     
-  
+    
+    
+// Node.js/Express.js Server Endpoint: /admin/dashboard-stats
 
+// app.get("/admin/dashboard-stats", verifyJWT, verifyAdmin, async (req, res) => {
+//     try {
+      
+        
+        
+        
+//         // বর্তমান সময় (সার্ভার UTC)
+//         const now = new Date(); 
+//         const bdTimezone = "+06:00"; // বাংলাদেশ সময়
+
+//         // ---------------- ১. Basic Counts ----------------
+//         const totalUsers = await usersCollection.countDocuments();
+//         const totalPublicLessons = await lessonsCollection.countDocuments({ visibility: "Public" });
+        
+//         // ---------------- ২. Reported Lessons (Aggregation - No change) ----------------
+//         const totalReportedLessonsResult = await reportsCollection.aggregate([
+//             { $group: { _id: "$lessonId" } },
+//             { $count: "uniqueLessonCount" }
+//         ]).toArray();
+//         const totalReportedLessons = totalReportedLessonsResult.length > 0
+//             ? totalReportedLessonsResult[0].uniqueLessonCount
+//             : 0;
+
+//         // ---------------- ৩. Today’s New Lessons (FIXED: Using Aggregation for accurate +06:00 count) ----------------
+//         // MongoDB এর $dateToString ব্যবহার করে আজকের দিন (YYYY-MM-DD) +06:00 এ বের করা
+//         const todayBDString = now.toLocaleDateString('en-CA', { 
+//             year: 'numeric', 
+//             month: '2-digit', 
+//             day: '2-digit', 
+//             timeZone: 'Asia/Dhaka' 
+//         }).replace(/\//g, '-'); // YYYY-MM-DD format
+
+//         const todaysNewLessonsResult = await lessonsCollection.aggregate([
+//             {
+//                 $project: {
+//                     dateBD: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt", timezone: bdTimezone } }
+//                 }
+//             },
+//             {
+//                 $match: {
+//                     dateBD: todayBDString
+//                 }
+//             },
+//             { $count: "count" }
+//         ]).toArray();
+        
+//         const todaysNewLessons = todaysNewLessonsResult[0]?.count || 0;
+
+
+//         // ---------------- ৪. Top Contributors (No change) ----------------
+//         const topContributors = await lessonsCollection.aggregate([
+//             {
+//                 $group: {
+//                     _id: "$creator.email",
+//                     name: { $first: "$creator.name" },
+//                     photoURL: { $first: "$creator.photoURL" },
+//                     totalLessons: { $sum: 1 }
+//                 }
+//             },
+//             { $sort: { totalLessons: -1 } },
+//             { $limit: 5 }
+//         ]).toArray();
+
+//         // ---------------- ৫. Last 7 Days Growth (FIXED: Efficient single aggregation per collection) ----------------
+
+//         // গ্রাফের জন্য সময়সীমা (৭ দিন) তৈরি করা
+//         const startDateBD = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
+//         startDateBD.setDate(startDateBD.getDate() - 6); 
+//         startDateBD.setHours(0, 0, 0, 0); 
+//         // UTC তে কনভার্ট করে MongoDB তে কোয়েরির জন্য পাঠানো
+//         const startDateUTC = new Date(startDateBD.getTime() - (6 * 60 * 60 * 1000)); 
+
+
+//         // a) Lesson Growth (Single Aggregation)
+//         const lessonGrowthCounts = await lessonsCollection.aggregate([
+//             { $match: { createdAt: { $gte: startDateUTC } } }, // UTC তে ৭ দিনের উইন্ডো
+//             { $group: {
+//                 _id: { $dateToString: { format: "%a", date: "$createdAt", timezone: bdTimezone } }, // সপ্তাহের সংক্ষিপ্ত দিন (+06:00 এ)
+//                 lessons: { $sum: 1 }
+//             } },
+//         ]).toArray();
+
+//         // b) User Growth (Single Aggregation)
+//         const userGrowthCounts = await usersCollection.aggregate([
+//             { $match: { createdAt: { $gte: startDateUTC } } }, // UTC তে ৭ দিনের উইন্ডো
+//             { $group: {
+//                 _id: { $dateToString: { format: "%a", date: "$createdAt", timezone: bdTimezone } }, // সপ্তাহের সংক্ষিপ্ত দিন (+06:00 এ)
+//                 users: { $sum: 1 }
+//             } },
+//         ]).toArray();
+        
+//         // --- গ্রাফের জন্য ডেটা ফরম্যাট করা (Merging and Filling Zeros) ---
+//         const dayNames = [];
+//         for (let i = 0; i < 7; i++) {
+//             const d = new Date(startDateBD);
+//             d.setDate(startDateBD.getDate() + i);
+//             dayNames.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
+//         }
+
+//         const lessonMap = lessonGrowthCounts.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.lessons }), {});
+//         const userMap = userGrowthCounts.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.users }), {});
+
+//         const combinedGrowth = dayNames.map(day => ({
+//             date: day,
+//             lessons: lessonMap[day] || 0,
+//             users: userMap[day] || 0
+//         }));
+
+
+//         // ---------------- ৬. Final Response ----------------
+//         res.json({
+//             totalUsers,
+//             totalPublicLessons,
+//             totalReportedLessons,
+//             todaysNewLessons,
+//             topContributors,
+//             lessonGrowth: combinedGrowth,
+//             userGrowth: combinedGrowth
+//         });
+
+//     } catch (err) {
+//         console.error("Dashboard API Error:", err);
+//         res.status(500).json({ error: "Failed to fetch dashboard stats" });
+//     }
+// });
+// Server Endpoint: /admin/dashboard-stats
+
+// app.get("/admin/dashboard-stats", verifyJWT, verifyAdmin, async (req, res) => {
+//     try {
+
+        
+//         // --- টাইম জোন সেটআপ ---
+//         const now = new Date(); 
+//         const bdTimezone = "+06:00"; // বাংলাদেশ সময়
+
+//         // ---------------- ১. Basic Counts ----------------
+//         const totalUsers = await usersCollection.countDocuments();
+//         const totalPublicLessons = await lessonsCollection.countDocuments({ visibility: "Public" });
+        
+//         // Reported Lessons
+//         const totalReportedLessonsResult = await reportsCollection.aggregate([
+//             { $group: { _id: "$lessonId" } },
+//             { $count: "uniqueLessonCount" }
+//         ]).toArray();
+//         const totalReportedLessons = totalReportedLessonsResult[0]?.uniqueLessonCount || 0;
+
+//         // ---------------- ২. Today’s New Lessons (FIXED: Date type conversion included) ----------------
+        
+//         // আজকের দিন (YYYY-MM-DD) +06:00 এ বের করা
+//         const todayBDString = now.toLocaleDateString('en-CA', { 
+//             year: 'numeric', 
+//             month: '2-digit', 
+//             day: '2-digit', 
+//             timeZone: 'Asia/Dhaka' 
+//         }).replace(/\//g, '-'); 
+
+//         const todaysNewLessonsResult = await lessonsCollection.aggregate([
+//             // FIX: createdAt স্ট্রিংকে Date এ রূপান্তর করা
+//             { $addFields: { convertedCreatedAt: { $toDate: "$createdAt" } } }, 
+//             {
+//                 $project: {
+//                     dateBD: { $dateToString: { format: "%Y-%m-%d", date: "$convertedCreatedAt", timezone: bdTimezone } }
+//                 }
+//             },
+//             { $match: { dateBD: todayBDString } },
+//             { $count: "count" }
+//         ]).toArray();
+        
+//         const todaysNewLessons = todaysNewLessonsResult[0]?.count || 0;
+
+
+//         // ---------------- ৩. Top Contributors (No Change) ----------------
+//         const topContributors = await lessonsCollection.aggregate([
+//             {
+//                 $group: {
+//                     _id: "$creator.email",
+//                     name: { $first: "$creator.name" },
+//                     photoURL: { $first: "$creator.photoURL" },
+//                     totalLessons: { $sum: 1 }
+//                 }
+//             },
+//             { $sort: { totalLessons: -1 } },
+//             { $limit: 5 }
+//         ]).toArray();
+
+//         // ---------------- ৪. Last 7 Days Growth (FIXED: Date type conversion included) ----------------
+
+//         // UTC তে ৭ দিন আগের শুরুর সময়
+//         const startDateBD = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
+//         startDateBD.setDate(startDateBD.getDate() - 6); 
+//         startDateBD.setHours(0, 0, 0, 0); 
+//         const startDateUTC = new Date(startDateBD.getTime() - (6 * 60 * 60 * 1000)); 
+
+
+//         // a) Lesson Growth (Single Aggregation with $toDate FIX)
+//         const lessonGrowthCounts = await lessonsCollection.aggregate([
+//             // FIX: createdAt স্ট্রিংকে Date এ রূপান্তর করা
+//             { $addFields: { convertedCreatedAt: { $toDate: "$createdAt" } } }, 
+//             { $match: { convertedCreatedAt: { $gte: startDateUTC } } },
+//             { $group: {
+//                 _id: { $dateToString: { format: "%a", date: "$convertedCreatedAt", timezone: bdTimezone } },
+//                 lessons: { $sum: 1 }
+//             } },
+//         ]).toArray();
+
+//         // b) User Growth (Single Aggregation with $toDate FIX)
+//         const userGrowthCounts = await usersCollection.aggregate([
+//             // FIX: createdAt স্ট্রিংকে Date এ রূপান্তর করা
+//             { $addFields: { convertedCreatedAt: { $toDate: "$createdAt" } } }, 
+//             { $match: { convertedCreatedAt: { $gte: startDateUTC } } }, 
+//             { $group: {
+//                 _id: { $dateToString: { format: "%a", date: "$convertedCreatedAt", timezone: bdTimezone } },
+//                 users: { $sum: 1 }
+//             } },
+//         ]).toArray();
+        
+//         // --- গ্রাফের জন্য ডেটা ফরম্যাট করা (Merging and Filling Zeros) ---
+//         const dayNames = [];
+//         for (let i = 0; i < 7; i++) {
+//             const d = new Date(startDateBD);
+//             d.setDate(startDateBD.getDate() + i);
+//             dayNames.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
+//         }
+
+//         const lessonMap = lessonGrowthCounts.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.lessons }), {});
+//         const userMap = userGrowthCounts.reduce((acc, curr) => ({ ...acc, [curr._id]: curr.users }), {});
+
+//         const combinedGrowth = dayNames.map(day => ({
+//             date: day,
+//             lessons: lessonMap[day] || 0,
+//             users: userMap[day] || 0
+//         }));
+
+
+//         // ---------------- ৫. Final Response ----------------
+//         res.json({
+//             totalUsers,
+//             totalPublicLessons,
+//             totalReportedLessons,
+//             todaysNewLessons,
+//             topContributors,
+//             lessonGrowth: combinedGrowth,
+//             userGrowth: combinedGrowth
+//         });
+
+//     } catch (err) {
+//         console.error("Dashboard API Error:", err);
+//         res.status(500).json({ error: "Failed to fetch dashboard stats" });
+//     }
+    // });
+    
+
+
+
+
+    // Server Endpoint: /admin/dashboard-stats (FINAL FIX)
+
+app.get("/admin/dashboard-stats", verifyJWT, verifyAdmin, async (req, res) => {
+    try {
+     
+        const now = new Date(); 
+        const bdTimezone = "+06:00"; 
+        
+        // --- ১. Basic Counts ---
+        const totalUsers = await usersCollection.countDocuments();
+        const totalPublicLessons = await lessonsCollection.countDocuments({ visibility: "Public" });
+        const totalReportedLessonsResult = await reportsCollection.aggregate([
+            { $group: { _id: "$lessonId" } },
+            { $count: "uniqueLessonCount" }
+        ]).toArray();
+        const totalReportedLessons = totalReportedLessonsResult[0]?.uniqueLessonCount || 0;
+
+        // --- ২. Today’s New Lessons (No change, as %Y-%m-%d is valid) ---
+        const todayBDString = now.toLocaleDateString('en-CA', { 
+            year: 'numeric', month: '2-digit', day: '2-digit', timeZone: 'Asia/Dhaka' 
+        }).replace(/\//g, '-'); 
+
+        const todaysNewLessonsResult = await lessonsCollection.aggregate([
+            { $addFields: { convertedCreatedAt: { $toDate: "$createdAt" } } }, 
+            {
+                $project: {
+                    dateBD: { $dateToString: { format: "%Y-%m-%d", date: "$convertedCreatedAt", timezone: bdTimezone } }
+                }
+            },
+            { $match: { dateBD: todayBDString } },
+            { $count: "count" }
+        ]).toArray();
+        const todaysNewLessons = todaysNewLessonsResult[0]?.count || 0;
+
+
+        // --- ৩. Top Contributors (No Change) ---
+        const topContributors = await lessonsCollection.aggregate([
+            { $group: { _id: "$creator.email", name: { $first: "$creator.name" }, photoURL: { $first: "$creator.photoURL" }, totalLessons: { $sum: 1 } } },
+            { $sort: { totalLessons: -1 } },
+            { $limit: 5 }
+        ]).toArray();
+
+        // --- ৪. Last 7 Days Growth (FIXED: Using $dayOfWeek) ---
+
+        // UTC তে ৭ দিন আগের শুরুর সময়
+        const startDateBD = new Date(now.toLocaleString('en-US', { timeZone: 'Asia/Dhaka' }));
+        startDateBD.setDate(startDateBD.getDate() - 6); 
+        startDateBD.setHours(0, 0, 0, 0); 
+        const startDateUTC = new Date(startDateBD.getTime() - (6 * 60 * 60 * 1000)); 
+
+        // a) Lesson Growth (FIXED: Grouping by $dayOfWeek and $dateToString for unique day ID)
+        const lessonGrowthCounts = await lessonsCollection.aggregate([
+            { $addFields: { convertedCreatedAt: { $toDate: "$createdAt" } } }, 
+            { $match: { convertedCreatedAt: { $gte: startDateUTC } } },
+            { $group: {
+                // $dayOfWeek (1=Sunday, 7=Saturday) এবং $dateToString (YYYY-MM-DD) একত্রিত করে unique key তৈরি করা হলো
+                _id: { 
+                    dayNum: { $dayOfWeek: { date: "$convertedCreatedAt", timezone: bdTimezone } },
+                    dateStr: { $dateToString: { format: "%Y-%m-%d", date: "$convertedCreatedAt", timezone: bdTimezone } }
+                },
+                lessons: { $sum: 1 }
+            } },
+        ]).toArray();
+
+        // b) User Growth (FIXED: Grouping by $dayOfWeek and $dateToString for unique day ID)
+        const userGrowthCounts = await usersCollection.aggregate([
+            { $addFields: { convertedCreatedAt: { $toDate: "$createdAt" } } }, 
+            { $match: { convertedCreatedAt: { $gte: startDateUTC } } }, 
+            { $group: {
+                _id: { 
+                    dayNum: { $dayOfWeek: { date: "$convertedCreatedAt", timezone: bdTimezone } },
+                    dateStr: { $dateToString: { format: "%Y-%m-%d", date: "$convertedCreatedAt", timezone: bdTimezone } }
+                },
+                users: { $sum: 1 }
+            } },
+        ]).toArray();
+        
+        // --- গ্রাফের জন্য ডেটা ফরম্যাট করা (Merging and Filling Zeros) ---
+        // সপ্তাহের দিনের নামগুলো ম্যাপিং করার জন্য একটি অ্যারে তৈরি করা হলো
+        const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"]; 
+        const combinedGrowth = [];
+
+        // গত ৭ দিনের জন্য লুপ করা
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(startDateBD);
+            d.setDate(startDateBD.getDate() + i);
+            const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
+
+            // MongoDB $dayOfWeek থেকে 1 (রবিবার) থেকে 7 (শনিবার) এর উপর ভিত্তি করে ম্যাপ করা
+            const dayNum = d.getDay() + 1; 
+
+            // ঐ দিনের ডেটা বের করা
+            const lessonData = lessonGrowthCounts.find(item => item._id.dayNum === dayNum && new Date(item._id.dateStr).toDateString() === d.toDateString());
+            const userData = userGrowthCounts.find(item => item._id.dayNum === dayNum && new Date(item._id.dateStr).toDateString() === d.toDateString());
+
+            combinedGrowth.push({
+                date: dayName,
+                lessons: lessonData?.lessons || 0,
+                users: userData?.users || 0
+            });
+        }
+        
+        // --- ৫. Final Response ---
+        res.json({
+            totalUsers,
+            totalPublicLessons,
+            totalReportedLessons,
+            todaysNewLessons,
+            topContributors,
+            lessonGrowth: combinedGrowth,
+            userGrowth: combinedGrowth
+        });
+
+    } catch (err) {
+        console.error("Dashboard API Error:", err);
+        res.status(500).json({ error: "Failed to fetch dashboard stats" });
+    }
+});
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    
 
     // Send a ping to confirm a successful connection
     await client.db('admin').command({ ping: 1 })
